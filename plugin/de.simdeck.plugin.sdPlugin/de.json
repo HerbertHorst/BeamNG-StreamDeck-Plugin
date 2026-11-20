@@ -1,0 +1,8 @@
+{
+  "Name": "SimDeck – BeamNG & Assetto Corsa",
+  "Description": "Live-Tasten für BeamNG.drive und Assetto Corsa: Licht, Blinker, ESC, 2H/4H/4L, Sperren, TC/ABS und mehr – mit Statusanzeige.",
+  "de.simdeck.plugin.slot": {
+    "Name": "SimDeck Taste",
+    "Tooltip": "Zeigt je nach Position und laufendem Spiel automatisch die passende Funktion."
+  }
+}

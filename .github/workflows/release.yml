@@ -1,0 +1,86 @@
+name: Test, build & release
+
+# Every push and pull request is tested and built.
+# On the main branch a GitHub release is created automatically when the number
+# in VERSION has no release yet – so to publish an update: raise VERSION,
+# add a section to CHANGELOG.md, push to main.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check JavaScript syntax
+        run: for f in plugin/de.simdeck.plugin.sdPlugin/bin/*.js tests/*.js; do node --check "$f"; done
+
+      - name: Check JSON files
+        run: for f in plugin/de.simdeck.plugin.sdPlugin/*.json; do python3 -m json.tool "$f" > /dev/null; done
+
+      - name: Plugin tests
+        run: node --test --test-concurrency=1 tests/*.test.js
+
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - name: BeamNG mod tests
+        run: lua5.4 tests/lua/run_tests.lua
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release files
+        run: python3 scripts/build.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simdeck-build
+          path: dist/
+
+  release:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: simdeck-build
+          path: dist/
+
+      - name: Create release if this version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          TAG="v${VERSION}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists - nothing to do."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            dist/SimDeck.streamDeckPlugin \
+            "dist/simdeck_beamng_v${VERSION}.zip" \
+            --target "$GITHUB_SHA" \
+            --title "SimDeck ${VERSION}" \
+            --notes-file dist/release-notes.md
+          echo "Created release $TAG"

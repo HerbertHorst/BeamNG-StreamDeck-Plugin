@@ -1,0 +1,8 @@
+{
+  "Name": "SimDeck – BeamNG & Assetto Corsa",
+  "Description": "Live keys for BeamNG.drive and Assetto Corsa: lights, indicators, ESC, 2H/4H/4L, diff locks, TC/ABS and more – with status display.",
+  "de.simdeck.plugin.slot": {
+    "Name": "SimDeck Key",
+    "Tooltip": "Shows the right function automatically, depending on its position and the running game."
+  }
+}

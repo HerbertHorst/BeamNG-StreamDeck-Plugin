@@ -1,0 +1,46 @@
+{
+  "Name": "SimDeck – BeamNG & Assetto Corsa",
+  "Version": "1.5.0.0",
+  "Author": "HerbertHorst",
+  "Description": "Live keys for BeamNG.drive and Assetto Corsa: lights, indicators, ESC, 2H/4H/4L, diff locks, TC/ABS and more – with status display.",
+  "URL": "https://github.com/HerbertHorst/BeamNG-StreamDeck-Plugin",
+  "UUID": "de.simdeck.plugin",
+  "Icon": "imgs/plugin",
+  "Category": "SimDeck",
+  "CategoryIcon": "imgs/category",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "6.4"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "disabled"
+  },
+  "PropertyInspectorPath": "ui/inspector.html",
+  "Actions": [
+    {
+      "UUID": "de.simdeck.plugin.slot",
+      "Name": "SimDeck Key",
+      "Tooltip": "Shows the right function automatically, depending on its position and the running game.",
+      "Icon": "imgs/action",
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": false,
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/key",
+          "ShowTitle": false
+        }
+      ]
+    }
+  ]
+}

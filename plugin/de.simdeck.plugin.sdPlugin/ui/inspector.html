@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>SimDeck</title>
+<style>
+  body { background: #2d2d2d; color: #d8d8d8; font: 12px "Segoe UI", Arial, sans-serif; margin: 0; padding: 10px 12px; }
+  h3 { font-size: 12px; color: #fff; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .row { display: flex; align-items: center; margin: 5px 0; }
+  .row label { width: 120px; flex: none; color: #bbb; }
+  select, input { flex: 1; background: #3d3d3d; color: #eee; border: 1px solid #555; border-radius: 3px; padding: 4px 5px; font: inherit; min-width: 0; }
+  button { background: #3d3d3d; color: #eee; border: 1px solid #555; border-radius: 3px; padding: 5px 8px; margin: 3px 4px 3px 0; cursor: pointer; font: inherit; }
+  button:hover { background: #4a4a4a; }
+  .hint { color: #999; font-size: 11px; line-height: 1.4; margin: 4px 0; }
+  #status { color: #9fd; }
+  details summary { cursor: pointer; color: #fff; margin-top: 12px; }
+</style>
+<!-- shared translations (same file the plugin uses) -->
+<script src="../bin/i18n.js"></script>
+</head>
+<body>
+  <h3 data-t="pi.functionTitle"></h3>
+  <div class="row"><label for="func" data-t="pi.function"></label><select id="func"></select></div>
+  <div class="row"><label for="page" data-t="pi.page"></label>
+    <select id="page"><option value="1" data-t="pi.page1"></option><option value="2" data-t="pi.page2"></option></select>
+  </div>
+  <div class="hint" data-t="pi.autoHint"></div>
+
+  <div class="row"><label for="lang" data-t="pi.language"></label>
+    <select id="lang">
+      <option value="auto" data-t="pi.langAuto"></option>
+      <option value="de">Deutsch</option>
+      <option value="en">English</option>
+    </select>
+  </div>
+
+  <details>
+    <summary data-t="pi.acKeys"></summary>
+    <div class="hint" data-t="pi.acKeysHint"></div>
+    <div id="keys"></div>
+  </details>
+
+  <h3 data-t="pi.help"></h3>
+  <button id="btnStatus" data-t="pi.status"></button>
+  <button id="btnDump" data-t="pi.dump"></button>
+  <button id="btnReset" data-t="pi.resetLevels"></button>
+  <div class="hint" id="status"></div>
+  <div class="hint" data-t="pi.dumpHint"></div>
+
+<script>
+// Function ids shown in the dropdown, grouped. Names come from i18n ("fn.<id>").
+const GROUPS = [
+  ["pi.groupBng", ["bng_signal_left", "bng_hazard", "bng_signal_right", "bng_lowbeam", "bng_highbeam", "bng_fog",
+    "bng_esc", "bng_drive", "bng_range", "bng_lock_rear", "bng_lock_center", "bng_lock_front", "bng_engine",
+    "bng_parkbrake", "bng_horn", "bng_flash", "bng_lightbar", "bng_gear"]],
+  ["pi.groupBngGeneral", ["bng_repair", "bng_home_save", "bng_home_load", "bng_camera", "bng_selector",
+    "bng_walk", "bng_nos", "bng_rocket"]],
+  ["pi.groupAc", ["ac_tc", "ac_tc_up", "ac_tc_down", "ac_abs", "ac_abs_up", "ac_abs_down", "ac_autoshift",
+    "ac_mguk_rec", "ac_mguk_del", "ac_lights", "ac_sig_left", "ac_sig_right", "ac_drs", "ac_kers",
+    "ac_enginebrake", "ac_bias", "ac_gear", "ac_fuel"]],
+];
+// AC functions that send a key combo, with their default combo ("" = none)
+const AC_KEYS = [
+  ["ac_tc_up", "ctrl+t"], ["ac_tc_down", "ctrl+shift+t"], ["ac_tc", "ctrl+t"],
+  ["ac_abs_up", "ctrl+a"], ["ac_abs_down", "ctrl+shift+a"], ["ac_abs", "ctrl+a"],
+  ["ac_autoshift", "ctrl+g"], ["ac_mguk_rec", "ctrl+1"], ["ac_mguk_del", "ctrl+2"],
+  ["ac_enginebrake", "ctrl+4"], ["ac_lights", ""], ["ac_sig_left", ""], ["ac_sig_right", ""],
+  ["ac_drs", ""], ["ac_kers", ""],
+];
+
+let ws, uuid, actionInfo, appLanguage = "en", settings = {}, global = { acKeys: {}, levels: {}, lang: "auto" };
+
+const L = () => SimDeckI18n.resolveLang(global.lang, appLanguage);
+const t = (k, v) => SimDeckI18n.t(L(), k, v);
+
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+function toPlugin(payload) { send({ action: actionInfo.action, event: "sendToPlugin", context: uuid, payload }); }
+function saveGlobal() { send({ event: "setGlobalSettings", context: uuid, payload: global }); }
+
+function applyTexts() {
+  document.documentElement.lang = L();
+  document.querySelectorAll("[data-t]").forEach((el) => { el.textContent = t(el.dataset.t); });
+  const sel = document.getElementById("func");
+  const current = settings.func || "auto";
+  sel.innerHTML = "";
+  sel.add(new Option(t("fn.auto"), "auto"));
+  for (const [groupKey, ids] of GROUPS) {
+    const og = document.createElement("optgroup");
+    og.label = t(groupKey);
+    for (const id of ids) og.appendChild(new Option(t("fn." + id), id));
+    sel.appendChild(og);
+  }
+  sel.value = current;
+  buildKeys();
+}
+
+function buildKeys() {
+  const box = document.getElementById("keys");
+  box.innerHTML = "";
+  for (const [id, def] of AC_KEYS) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const lbl = document.createElement("label");
+    lbl.textContent = t("fn." + id);
+    const inp = document.createElement("input");
+    inp.placeholder = def || t("pi.notBound");
+    inp.value = (global.acKeys && global.acKeys[id]) || "";
+    inp.addEventListener("change", () => {
+      global.acKeys = global.acKeys || {};
+      const v = inp.value.trim().toLowerCase();
+      if (v) global.acKeys[id] = v; else delete global.acKeys[id];
+      saveGlobal();
+    });
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    box.appendChild(row);
+  }
+}
+
+function showStatus(s) {
+  const age = (v) => v === null ? t("pi.never") : (v <= 2 ? t("pi.connected") : t("pi.ago", { s: v }));
+  const game = s.game === "beamng" ? "BeamNG" : s.game === "ac" ? "Assetto Corsa" : t("pi.none");
+  const mod = s.beamng !== null ? ` – ${t("pi.version")} ${s.modVersion || t("pi.modOld")}` : "";
+  document.getElementById("status").innerHTML =
+    `${t("pi.activeGame")}: <b>${game}</b><br>` +
+    `${t("pi.pluginVersion")}: ${s.pluginVersion || "?"}<br>` +
+    `${t("pi.mod")}: ${age(s.beamng)}${mod}<br>` +
+    `${t("pi.bridge")}: ${s.bridge ? t("pi.running") : t("pi.notRunning")} – ${t("pi.data")} ${age(s.ac)}`;
+}
+
+// called by the Stream Deck app when the Property Inspector opens
+function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, inActionInfo) {
+  uuid = inUUID;
+  actionInfo = JSON.parse(inActionInfo);
+  try { appLanguage = JSON.parse(inInfo).application.language || "en"; } catch (_) {}
+  settings = (actionInfo.payload && actionInfo.payload.settings) || {};
+
+  document.getElementById("func").addEventListener("change", (e) => {
+    settings.func = e.target.value;
+    send({ event: "setSettings", context: uuid, payload: settings });
+  });
+  const pg = document.getElementById("page");
+  pg.value = String(settings.page || "1");
+  pg.addEventListener("change", () => {
+    settings.page = pg.value;
+    send({ event: "setSettings", context: uuid, payload: settings });
+  });
+  const lang = document.getElementById("lang");
+  lang.addEventListener("change", () => {
+    global.lang = lang.value;
+    saveGlobal();
+    applyTexts();
+  });
+
+  ws = new WebSocket("ws://127.0.0.1:" + inPort);
+  ws.onopen = () => {
+    send({ event: inRegisterEvent, uuid: inUUID });
+    send({ event: "getGlobalSettings", context: uuid });
+  };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.event === "didReceiveGlobalSettings") {
+      global = Object.assign({ acKeys: {}, levels: {}, lang: "auto" }, m.payload.settings || {});
+      lang.value = global.lang || "auto";
+      applyTexts();
+    }
+    if (m.event === "sendToPropertyInspector" && m.payload && m.payload.status) showStatus(m.payload.status);
+  };
+
+  document.getElementById("btnStatus").onclick = () => {
+    const el = document.getElementById("status");
+    el.textContent = t("pi.asking");
+    toPlugin({ cmd: "status" });
+    setTimeout(() => {
+      if (el.textContent === t("pi.asking")) el.innerHTML = `<span style="color:#f99">${t("pi.noAnswer")}</span>`;
+    }, 2500);
+  };
+  document.getElementById("btnDump").onclick = () => toPlugin({ cmd: "dump" });
+  document.getElementById("btnReset").onclick = () => toPlugin({ cmd: "resetLevels" });
+  applyTexts();
+}
+</script>
+</body>
+</html>
